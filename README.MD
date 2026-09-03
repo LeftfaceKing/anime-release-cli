@@ -1,5 +1,10 @@
 # Anime Release CLI
 
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/LeftfaceKing/anime-release-cli/releases/tag/v1.0.0)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![CLI](https://img.shields.io/badge/interface-CLI-lightgrey)](https://github.com/LeftfaceKing/anime-release-cli)
+[![License](https://img.shields.io/badge/license-Portfolio%20%2F%20Educational-lightgrey)](https://github.com/LeftfaceKing/anime-release-cli)
+
 A command-line application for searching anime, viewing seasonal releases, checking episode schedules, discovering streaming availability, and tracking what is airing yesterday, today, and tomorrow.
 
 Built in Python with data from AniList, Kitsu, and Tsuzuki.
@@ -59,6 +64,25 @@ Tsuzuki provides detailed schedule information including:
 - Estimated release times
 
 This is used for the detailed `airing` command and as a schedule fallback when AniList is unavailable.
+
+## Engineering Highlights
+
+Anime Release CLI demonstrates more than basic API consumption. The project was designed around reliability, data normalization, and real-world command-line usability.
+
+- **Multi-provider API architecture** — integrates AniList, Kitsu, and Tsuzuki rather than relying on a single external service.
+- **Automatic API failover** — commands continue operating through fallback providers when the primary AniList API is unavailable.
+- **Data normalization** — converts responses from GraphQL and REST APIs into a consistent internal structure.
+- **Schedule aggregation** — processes RAW, SUB, and DUB release schedules along with streaming platform information.
+- **Local timezone conversion** — converts release timestamps into the user's local system timezone.
+- **Fault-tolerant networking** — handles API outages, HTTP errors, timeouts, rate limits, and malformed responses without exposing Python tracebacks to the user.
+- **CLI packaging** — packaged as an installable Python application with a global `ani` command using pipx.
+- **Versioned releases** — uses Git tags and GitHub Releases for stable software releases.
+
+### Real-World Problem Solved
+
+Anime release information is distributed across multiple services and can become unavailable when a provider experiences an outage. Anime Release CLI combines multiple data sources behind one command-line interface and automatically falls back to alternative providers when necessary.
+
+This allows users to search anime, inspect seasonal releases, check airing schedules, and view streaming information without manually switching between multiple websites or APIs.
 
 ## Requirements
 
