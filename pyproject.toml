@@ -8,14 +8,20 @@ version = "1.0.0"
 description = "CLI for upcoming anime releases, episode schedules, and airing information."
 requires-python = ">=3.10"
 dependencies = [
-    "requests"
+    "requests",
+    "Pillow",
 ]
 
 [project.scripts]
 ani = "main:main"
 
 [tool.setuptools]
-py-modules = ["main", "api", "formatters", "models"]
+py-modules = [
+    "main",
+    "api",
+    "formatters",
+    "models",
+]
 
 [tool.setuptools.package-dir]
 "" = "src"

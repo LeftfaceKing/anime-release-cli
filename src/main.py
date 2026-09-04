@@ -1,10 +1,26 @@
 import argparse
+import html
+import re
+import shutil
+import textwrap
 
 from datetime import datetime
 
 from importlib.metadata import (
     version,
     PackageNotFoundError,
+)
+
+from pathlib import Path
+
+from urllib.parse import urlparse
+
+import requests
+
+from PIL import (
+    Image,
+    ImageEnhance,
+    ImageFilter,
 )
 
 from api import (
@@ -27,6 +43,12 @@ from formatters import (
     format_anime_details,
     format_date,
 )
+
+
+GREEN = "\033[38;2;102;255;0m"
+WHITE = "\033[38;2;235;235;235m"
+DIM = "\033[38;2;135;135;135m"
+RESET = "\033[0m"
 
 
 def get_cli_version():
@@ -96,6 +118,1153 @@ def print_fallback_notice(
             "AniList is unavailable. "
             "Using Tsuzuki schedule fallback."
         )
+
+
+# ============================================================
+# COVER IMAGE
+# ============================================================
+
+
+def get_cover_image_url(
+    anime,
+):
+
+    cover_image = anime.get(
+        "coverImage"
+    )
+
+    if not isinstance(
+        cover_image,
+        dict,
+    ):
+
+        return None
+
+    return (
+        cover_image.get(
+            "extraLarge"
+        )
+        or cover_image.get(
+            "large"
+        )
+        or cover_image.get(
+            "original"
+        )
+        or cover_image.get(
+            "medium"
+        )
+        or cover_image.get(
+            "small"
+        )
+    )
+
+
+def get_cover_cache_directory():
+
+    cache_directory = (
+        Path.home()
+        / "Library"
+        / "Caches"
+        / "anime-release-cli"
+        / "covers"
+    )
+
+    cache_directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    return cache_directory
+
+
+def safe_cover_filename(
+    anime,
+    image_url,
+):
+
+    anime_id = (
+        anime.get(
+            "id"
+        )
+        or "anime"
+    )
+
+    provider = (
+        anime.get(
+            "_provider"
+        )
+        or "anilist"
+    )
+
+    parsed_url = urlparse(
+        image_url
+    )
+
+    suffix = Path(
+        parsed_url.path
+    ).suffix.lower()
+
+    valid_suffixes = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+    }
+
+    if suffix not in valid_suffixes:
+
+        suffix = ".jpg"
+
+    return (
+        f"{provider}-"
+        f"{anime_id}"
+        f"{suffix}"
+    )
+
+
+def download_cover_image(
+    anime,
+):
+
+    image_url = get_cover_image_url(
+        anime
+    )
+
+    if not image_url:
+
+        return None
+
+    cache_directory = (
+        get_cover_cache_directory()
+    )
+
+    filename = safe_cover_filename(
+        anime,
+        image_url,
+    )
+
+    image_path = (
+        cache_directory
+        / filename
+    )
+
+    if (
+        image_path.exists()
+        and image_path.stat().st_size > 0
+    ):
+
+        return image_path
+
+    try:
+
+        response = requests.get(
+            image_url,
+            timeout=15,
+            headers={
+                "User-Agent": (
+                    "Anime-Release-CLI/"
+                    f"{get_cli_version()}"
+                )
+            },
+        )
+
+        response.raise_for_status()
+
+        content_type = (
+            response.headers.get(
+                "Content-Type",
+                ""
+            )
+        ).lower()
+
+        if (
+            content_type
+            and not content_type.startswith(
+                "image/"
+            )
+        ):
+
+            return None
+
+        image_path.write_bytes(
+            response.content
+        )
+
+    except (
+        requests.exceptions.RequestException,
+        OSError,
+    ):
+
+        return None
+
+    return image_path
+
+
+def clean_description(
+    description,
+):
+
+    if not description:
+
+        return ""
+
+    description = html.unescape(
+        description
+    )
+
+    description = re.sub(
+        r"<br\s*/?>",
+        "\n",
+        description,
+        flags=re.IGNORECASE,
+    )
+
+    description = re.sub(
+        r"</p>",
+        "\n",
+        description,
+        flags=re.IGNORECASE,
+    )
+
+    description = re.sub(
+        r"<[^>]+>",
+        "",
+        description,
+    )
+
+    description = re.sub(
+        r"\n\s*\n+",
+        "\n",
+        description,
+    )
+
+    return description.strip()
+
+
+QUADRANT_GLYPHS = {
+    0b0000: " ",
+    0b0001: "▘",
+    0b0010: "▝",
+    0b0011: "▀",
+    0b0100: "▖",
+    0b0101: "▌",
+    0b0110: "▞",
+    0b0111: "▛",
+    0b1000: "▗",
+    0b1001: "▚",
+    0b1010: "▐",
+    0b1011: "▜",
+    0b1100: "▄",
+    0b1101: "▙",
+    0b1110: "▟",
+    0b1111: "█",
+}
+
+
+def average_rgb(
+    colors,
+):
+
+    if not colors:
+
+        return (
+            0,
+            0,
+            0,
+        )
+
+    return tuple(
+        int(
+            sum(
+                color[channel]
+                for color in colors
+            )
+            / len(
+                colors
+            )
+        )
+
+        for channel in range(
+            3
+        )
+    )
+
+
+def color_distance(
+    first,
+    second,
+):
+
+    red_difference = (
+        first[0]
+        - second[0]
+    )
+
+    green_difference = (
+        first[1]
+        - second[1]
+    )
+
+    blue_difference = (
+        first[2]
+        - second[2]
+    )
+
+    return (
+        red_difference
+        * red_difference
+        * 0.30
+
+        + green_difference
+        * green_difference
+        * 0.59
+
+        + blue_difference
+        * blue_difference
+        * 0.11
+    )
+
+
+def crop_cover_for_terminal(
+    image,
+    width,
+    rows,
+):
+
+    source_width, source_height = (
+        image.size
+    )
+
+    # A terminal character is normally taller
+    # than it is wide.
+    #
+    # At 28 x 22 cells, the visible poster area
+    # is much closer to a portrait ratio than
+    # a literal 28 / 22 pixel image.
+    #
+    # This factor preserves the proportions of
+    # the poster while allowing quadrant rendering.
+    cell_aspect = 2.0
+
+    visible_width = (
+        width
+    )
+
+    visible_height = (
+        rows
+        * cell_aspect
+    )
+
+    target_ratio = (
+        visible_width
+        / visible_height
+    )
+
+    source_ratio = (
+        source_width
+        / source_height
+    )
+
+    if source_ratio > target_ratio:
+
+        crop_width = int(
+            source_height
+            * target_ratio
+        )
+
+        left = (
+            source_width
+            - crop_width
+        ) // 2
+
+        image = image.crop(
+            (
+                left,
+                0,
+                left + crop_width,
+                source_height,
+            )
+        )
+
+    else:
+
+        crop_height = int(
+            source_width
+            / target_ratio
+        )
+
+        top = (
+            source_height
+            - crop_height
+        ) // 2
+
+        image = image.crop(
+            (
+                0,
+                top,
+                source_width,
+                top + crop_height,
+            )
+        )
+
+    return image
+
+
+def best_quadrant_cell(
+    colors,
+):
+
+    best_error = None
+    best_mask = 0
+
+    best_foreground = (
+        0,
+        0,
+        0,
+    )
+
+    best_background = (
+        0,
+        0,
+        0,
+    )
+
+    for mask in range(
+        16
+    ):
+
+        foreground_pixels = []
+
+        background_pixels = []
+
+        for index, color in enumerate(
+            colors
+        ):
+
+            if (
+                mask
+                & (
+                    1 << index
+                )
+            ):
+
+                foreground_pixels.append(
+                    color
+                )
+
+            else:
+
+                background_pixels.append(
+                    color
+                )
+
+        if foreground_pixels:
+
+            foreground = average_rgb(
+                foreground_pixels
+            )
+
+        elif background_pixels:
+
+            foreground = average_rgb(
+                background_pixels
+            )
+
+        else:
+
+            foreground = (
+                0,
+                0,
+                0,
+            )
+
+        if background_pixels:
+
+            background = average_rgb(
+                background_pixels
+            )
+
+        else:
+
+            background = foreground
+
+        error = 0
+
+        for index, color in enumerate(
+            colors
+        ):
+
+            if (
+                mask
+                & (
+                    1 << index
+                )
+            ):
+
+                candidate = foreground
+
+            else:
+
+                candidate = background
+
+            error += color_distance(
+                color,
+                candidate,
+            )
+
+        if (
+            best_error is None
+            or error < best_error
+        ):
+
+            best_error = error
+
+            best_mask = mask
+
+            best_foreground = foreground
+
+            best_background = background
+
+    return (
+        QUADRANT_GLYPHS[
+            best_mask
+        ],
+        best_foreground,
+        best_background,
+    )
+
+
+def render_cover_ansi(
+    image_path,
+    width=28,
+    rows=22,
+):
+
+    try:
+
+        with Image.open(
+            image_path
+        ) as image:
+
+            image = image.convert(
+                "RGB"
+            )
+
+            image = crop_cover_for_terminal(
+                image,
+                width,
+                rows,
+            )
+
+            # Four logical source pixels are used
+            # for every terminal character:
+            #
+            # TL TR
+            # BL BR
+            #
+            # This doubles the horizontal sampling
+            # compared with the previous half-block
+            # renderer while keeping the same visible
+            # 28 x 22 terminal footprint.
+            target_width = (
+                width * 2
+            )
+
+            target_height = (
+                rows * 2
+            )
+
+            # Work at a higher intermediate
+            # resolution before final reduction.
+            supersample = 4
+
+            high_width = (
+                target_width
+                * supersample
+            )
+
+            high_height = (
+                target_height
+                * supersample
+            )
+
+            image = image.resize(
+                (
+                    high_width,
+                    high_height,
+                ),
+                Image.Resampling.LANCZOS,
+            )
+
+            image = image.filter(
+                ImageFilter.UnsharpMask(
+                    radius=1.25,
+                    percent=130,
+                    threshold=3,
+                )
+            )
+
+            image = ImageEnhance.Contrast(
+                image
+            ).enhance(
+                1.05
+            )
+
+            image = ImageEnhance.Color(
+                image
+            ).enhance(
+                1.03
+            )
+
+            image = image.resize(
+                (
+                    target_width,
+                    target_height,
+                ),
+                Image.Resampling.LANCZOS,
+            )
+
+            pixels = image.load()
+
+            output_lines = []
+
+            for y in range(
+                0,
+                target_height,
+                2,
+            ):
+
+                line = ""
+
+                for x in range(
+                    0,
+                    target_width,
+                    2,
+                ):
+
+                    colors = [
+                        pixels[
+                            x,
+                            y,
+                        ],
+
+                        pixels[
+                            x + 1,
+                            y,
+                        ],
+
+                        pixels[
+                            x,
+                            y + 1,
+                        ],
+
+                        pixels[
+                            x + 1,
+                            y + 1,
+                        ],
+                    ]
+
+                    (
+                        glyph,
+                        foreground,
+                        background,
+                    ) = best_quadrant_cell(
+                        colors
+                    )
+
+                    line += (
+                        f"\033[38;2;"
+                        f"{foreground[0]};"
+                        f"{foreground[1]};"
+                        f"{foreground[2]}m"
+                        f"\033[48;2;"
+                        f"{background[0]};"
+                        f"{background[1]};"
+                        f"{background[2]}m"
+                        f"{glyph}"
+                    )
+
+                line += RESET
+
+                output_lines.append(
+                    line
+                )
+
+            return output_lines
+
+    except (
+        OSError,
+        ValueError,
+    ):
+
+        return []
+
+
+def color_metadata_line(
+    label,
+    value,
+):
+
+    return (
+        f"{GREEN}"
+        f"{label}:"
+        f"{RESET}"
+        f" "
+        f"{WHITE}"
+        f"{value}"
+        f"{RESET}"
+    )
+
+
+def get_anime_card_text(
+    anime,
+    width,
+    max_rows,
+):
+
+    lines = []
+
+    title = anime_title(
+        anime
+    )
+
+    lines.append(
+        f"{GREEN}"
+        f"{title.upper()}"
+        f"{RESET}"
+    )
+
+    lines.append(
+        ""
+    )
+
+    lines.append(
+        color_metadata_line(
+            "Type",
+            anime.get(
+                "format"
+            )
+            or "TBA",
+        )
+    )
+
+    lines.append(
+        color_metadata_line(
+            "Episodes",
+            anime.get(
+                "episodes"
+            )
+            or "TBA",
+        )
+    )
+
+    lines.append(
+        color_metadata_line(
+            "Status",
+            anime.get(
+                "status"
+            )
+            or "TBA",
+        )
+    )
+
+    studios = (
+        anime.get(
+            "studios",
+            {},
+        ).get(
+            "nodes",
+            [],
+        )
+    )
+
+    studio_names = ", ".join(
+        studio.get(
+            "name",
+            ""
+        )
+
+        for studio in studios
+
+        if studio.get(
+            "name"
+        )
+    )
+
+    if studio_names:
+
+        lines.append(
+            color_metadata_line(
+                "Studio",
+                studio_names,
+            )
+        )
+
+    lines.append(
+        color_metadata_line(
+            "Source",
+            anime.get(
+                "source"
+            )
+            or "TBA",
+        )
+    )
+
+    genres = (
+        anime.get(
+            "genres",
+            [],
+        )
+    )
+
+    if genres:
+
+        genre_text = ", ".join(
+            genres
+        )
+
+        genre_lines = textwrap.wrap(
+            genre_text,
+            width=max(
+                15,
+                width - 10,
+            ),
+        )
+
+        if genre_lines:
+
+            lines.append(
+                color_metadata_line(
+                    "Genres",
+                    genre_lines[0],
+                )
+            )
+
+            for continuation in (
+                genre_lines[1:]
+            ):
+
+                lines.append(
+                    f"{WHITE}"
+                    f"{' ' * 8}"
+                    f"{continuation}"
+                    f"{RESET}"
+                )
+
+    start_date = format_date(
+        anime.get(
+            "startDate"
+        )
+    )
+
+    end_date = format_date(
+        anime.get(
+            "endDate"
+        )
+    )
+
+    if (
+        start_date != "TBA"
+        and end_date != "TBA"
+    ):
+
+        lines.append(
+            color_metadata_line(
+                "Aired",
+                (
+                    f"{start_date} — "
+                    f"{end_date}"
+                ),
+            )
+        )
+
+    elif start_date != "TBA":
+
+        lines.append(
+            color_metadata_line(
+                "Started",
+                start_date,
+            )
+        )
+
+    next_episode = anime.get(
+        "nextAiringEpisode"
+    )
+
+    if next_episode:
+
+        episode = next_episode.get(
+            "episode"
+        )
+
+        airing_at = next_episode.get(
+            "airingAt"
+        )
+
+        if episode:
+
+            lines.append(
+                color_metadata_line(
+                    "Next Ep",
+                    episode,
+                )
+            )
+
+        if airing_at:
+
+            local_time = (
+                datetime.fromtimestamp(
+                    airing_at
+                ).astimezone()
+            )
+
+            lines.append(
+                color_metadata_line(
+                    "Airs",
+                    local_time.strftime(
+                        "%b %d, %Y "
+                        "%I:%M %p %Z"
+                    ),
+                )
+            )
+
+    description = clean_description(
+        anime.get(
+            "description"
+        )
+    )
+
+    if description:
+
+        lines.append(
+            ""
+        )
+
+        lines.append(
+            f"{GREEN}"
+            f"Synopsis:"
+            f"{RESET}"
+        )
+
+        wrapped_description = (
+            textwrap.wrap(
+                description,
+                width=max(
+                    20,
+                    width,
+                ),
+            )
+        )
+
+        available = (
+            max_rows
+            - len(
+                lines
+            )
+        )
+
+        if available > 0:
+
+            for paragraph_line in (
+                wrapped_description[
+                    :available
+                ]
+            ):
+
+                lines.append(
+                    f"{WHITE}"
+                    f"{paragraph_line}"
+                    f"{RESET}"
+                )
+
+    return lines[
+        :max_rows
+    ]
+
+
+def ansi_visible_length(
+    text,
+):
+
+    ansi_escape = re.compile(
+        r"\x1b\[[0-9;]*m"
+    )
+
+    clean = ansi_escape.sub(
+        "",
+        text,
+    )
+
+    return len(
+        clean
+    )
+
+
+def ansi_pad(
+    text,
+    width,
+):
+
+    visible_length = (
+        ansi_visible_length(
+            text
+        )
+    )
+
+    remaining = max(
+        0,
+        width - visible_length,
+    )
+
+    return (
+        text
+        + (
+            " " * remaining
+        )
+    )
+
+
+def render_anime_info_card(
+    anime,
+):
+
+    image_path = download_cover_image(
+        anime
+    )
+
+    if not image_path:
+
+        return False
+
+    terminal_width = (
+        shutil.get_terminal_size(
+            fallback=(
+                120,
+                30,
+            )
+        ).columns
+    )
+
+    if terminal_width < 80:
+
+        return False
+
+    # Keep the visible dimensions at the size
+    # you preferred.
+    image_width = 28
+    image_rows = 22
+    gap = 4
+
+    card_width = min(
+        terminal_width - 2,
+        112,
+    )
+
+    inner_width = (
+        card_width - 2
+    )
+
+    text_width = (
+        inner_width
+        - image_width
+        - gap
+        - 2
+    )
+
+    if text_width < 35:
+
+        return False
+
+    image_lines = render_cover_ansi(
+        image_path,
+        width=image_width,
+        rows=image_rows,
+    )
+
+    if not image_lines:
+
+        return False
+
+    text_lines = get_anime_card_text(
+        anime,
+        width=text_width,
+        max_rows=image_rows,
+    )
+
+    while len(
+        text_lines
+    ) < image_rows:
+
+        text_lines.append(
+            ""
+        )
+
+    print()
+
+    print(
+        f"{GREEN}"
+        f"┌"
+        f"{'─' * inner_width}"
+        f"┐"
+        f"{RESET}"
+    )
+
+    for row in range(
+        image_rows
+    ):
+
+        image_line = (
+            image_lines[
+                row
+            ]
+        )
+
+        text_line = (
+            text_lines[
+                row
+            ]
+        )
+
+        padded_text = ansi_pad(
+            text_line,
+            text_width,
+        )
+
+        print(
+            f"{GREEN}"
+            f"│"
+            f"{RESET}"
+            f" "
+            f"{image_line}"
+            f"{' ' * gap}"
+            f"{padded_text}"
+            f" "
+            f"{GREEN}"
+            f"│"
+            f"{RESET}"
+        )
+
+    print(
+        f"{GREEN}"
+        f"└"
+        f"{'─' * inner_width}"
+        f"┘"
+        f"{RESET}"
+    )
+
+    print(
+        f"{DIM}"
+        f"Data source: "
+        f"{provider_name(anime)}"
+        f"{RESET}"
+    )
+
+    return True
+
+
+# ============================================================
+# STANDARD CLI
+# ============================================================
 
 
 def print_anime_entry(anime):
@@ -319,6 +1488,14 @@ def handle_info(title):
 
         return
 
+    rendered = render_anime_info_card(
+        anime
+    )
+
+    if rendered:
+
+        return
+
     print()
 
     print(
@@ -327,9 +1504,13 @@ def handle_info(title):
         )
     )
 
-    if anime.get(
-        "description"
-    ):
+    description = clean_description(
+        anime.get(
+            "description"
+        )
+    )
+
+    if description:
 
         print()
 
@@ -338,9 +1519,7 @@ def handle_info(title):
         )
 
         print(
-            anime[
-                "description"
-            ]
+            description
         )
 
     print()
@@ -1432,12 +2611,12 @@ def handle_airing(title):
         print()
 
         print(
-    "Schedule data: Tsuzuki"
-)
+            "Schedule data: Tsuzuki"
+        )
 
         print(
-    "Metadata source: AniList"
-)
+            "Metadata source: AniList"
+        )
 
         return
 
@@ -1597,7 +2776,6 @@ def handle_airing(title):
     print(
         "Metadata source: AniList"
     )
-
 
 
 def main():

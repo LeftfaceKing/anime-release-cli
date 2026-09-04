@@ -50,6 +50,14 @@ query ($search: String) {
         english
       }
 
+      coverImage {
+        extraLarge
+        large
+        medium
+      }
+
+      description(asHtml: false)
+
       status
       episodes
       format
@@ -476,7 +484,7 @@ def send_kitsu_request(
     headers = {
         "Accept": "application/vnd.api+json",
         "Content-Type": "application/vnd.api+json",
-        "User-Agent": "Anime-Release-CLI/0.1.0",
+        "User-Agent": "Anime-Release-CLI/1.0.0",
     }
 
     try:
@@ -553,7 +561,7 @@ def send_tsuzuki_request(
 
     headers = {
         "Accept": "application/json",
-        "User-Agent": "Anime-Release-CLI/0.1.0",
+        "User-Agent": "Anime-Release-CLI/1.0.0",
     }
 
     try:
@@ -893,6 +901,14 @@ def normalize_kitsu_anime(
         or {}
     )
 
+    poster_image = (
+        attributes.get(
+            "posterImage",
+            {},
+        )
+        or {}
+    )
+
     start_date = parse_kitsu_date(
         attributes.get(
             "startDate"
@@ -937,6 +953,24 @@ def normalize_kitsu_anime(
         "title": {
             "romaji": canonical_title,
             "english": english_title,
+        },
+
+        "coverImage": {
+            "extraLarge": poster_image.get(
+                "original"
+            ),
+            "large": poster_image.get(
+                "large"
+            ),
+            "medium": poster_image.get(
+                "medium"
+            ),
+            "small": poster_image.get(
+                "small"
+            ),
+            "original": poster_image.get(
+                "original"
+            ),
         },
 
         "status": normalize_kitsu_status(
