@@ -1,6 +1,6 @@
 # Anime Release CLI
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/LeftfaceKing/anime-release-cli/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/LeftfaceKing/anime-release-cli/releases/tag/v1.2.0)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![CLI](https://img.shields.io/badge/interface-CLI-lightgrey)](https://github.com/LeftfaceKing/anime-release-cli)
 [![License](https://img.shields.io/badge/license-Portfolio%20%2F%20Educational-lightgrey)](https://github.com/LeftfaceKing/anime-release-cli)
@@ -11,6 +11,7 @@ Built in Python with data from AniList, Kitsu, and Tsuzuki.
 
 ## Features
 
+- Self-update directly from the terminal with `ani update`
 - Search for anime from the terminal
 - View detailed anime information
 - Browse anime by season
@@ -92,6 +93,12 @@ This allows users to search anime, inspect seasonal releases, check airing sched
 
 ## Installation
 
+Anime Release CLI is designed to be installed with pipx.
+
+```bash
+
+pipx install git+https://github.com/LeftfaceKing/anime-release-cli.git
+
 Clone the repository:
 
 ```bash
@@ -120,7 +127,7 @@ ani --version
 Current release:
 
 ```text
-Anime Release CLI 1.0.0
+Anime Release CLI 1.2.0
 ```
 
 ## Commands
@@ -406,7 +413,7 @@ Handled conditions include:
 
 ## Version
 
-**Anime Release CLI v1.0.0**
+**Anime Release CLI v1.2.0**
 
 ## Technology
 

@@ -2,6 +2,7 @@ import argparse
 import html
 import re
 import shutil
+import subprocess
 import textwrap
 
 from datetime import datetime
@@ -61,7 +62,7 @@ def get_cli_version():
 
     except PackageNotFoundError:
 
-        return "0.1.0"
+        return "1.2.0"
 
 
 def anime_title(anime):
@@ -2778,6 +2779,119 @@ def handle_airing(title):
     )
 
 
+
+UPDATE_REPOSITORY = (
+    "git+https://github.com/"
+    "LeftfaceKing/"
+    "anime-release-cli.git"
+)
+
+
+def handle_update():
+
+    pipx_path = shutil.which(
+        "pipx"
+    )
+
+    if not pipx_path:
+
+        print()
+
+        print(
+            "Unable to update Anime Release CLI."
+        )
+
+        print(
+            "pipx is not installed or "
+            "could not be found."
+        )
+
+        print()
+
+        print(
+            "Install pipx, then run:"
+        )
+
+        print(
+            "ani update"
+        )
+
+        return
+
+    print()
+
+    print(
+        "ANIME RELEASE CLI UPDATER"
+    )
+
+    print(
+        "─" * 60
+    )
+
+    print(
+        f"Current version: "
+        f"{get_cli_version()}"
+    )
+
+    print()
+
+    print(
+        "Checking GitHub for the "
+        "latest version..."
+    )
+
+    print()
+
+    try:
+
+        result = subprocess.run(
+            [
+                pipx_path,
+                "install",
+                "--force",
+                UPDATE_REPOSITORY,
+            ],
+            check=False,
+        )
+
+    except OSError as error:
+
+        print()
+
+        print(
+            f"Update failed: {error}"
+        )
+
+        return
+
+    if result.returncode != 0:
+
+        print()
+
+        print(
+            "Anime Release CLI "
+            "could not be updated."
+        )
+
+        return
+
+    print()
+
+    print(
+        "Update complete."
+    )
+
+    print()
+
+    print(
+        "Run:"
+    )
+
+    print(
+        "ani --version"
+    )
+
+
 def main():
 
     parser = argparse.ArgumentParser(
@@ -2878,6 +2992,10 @@ def main():
         "tomorrow"
     )
 
+    sub.add_parser(
+        "update"
+    )
+
     args = parser.parse_args()
 
     try:
@@ -2950,6 +3068,10 @@ def main():
         elif args.command == "tomorrow":
 
             handle_tomorrow()
+
+        elif args.command == "update":
+
+            handle_update()
 
         else:
 
