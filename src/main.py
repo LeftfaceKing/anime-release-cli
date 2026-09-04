@@ -1,8 +1,11 @@
 import argparse
+import base64
 import html
+import os
 import re
 import shutil
 import subprocess
+import sys
 import textwrap
 
 from datetime import datetime
@@ -62,7 +65,7 @@ def get_cli_version():
 
     except PackageNotFoundError:
 
-        return "1.2.0"
+        return "1.2.1"
 
 
 def anime_title(anime):
@@ -340,6 +343,90 @@ def clean_description(
     )
 
     return description.strip()
+
+
+
+# ============================================================
+# NATIVE TERMINAL IMAGE SUPPORT
+# ============================================================
+
+
+def supports_native_inline_images():
+
+    term_program = (
+        os.environ.get(
+            "TERM_PROGRAM",
+            ""
+        )
+        .strip()
+        .lower()
+    )
+
+    if "warp" in term_program:
+
+        return True
+
+    if "iterm" in term_program:
+
+        return True
+
+    if os.environ.get(
+        "ITERM_SESSION_ID"
+    ):
+
+        return True
+
+    return False
+
+
+def build_native_image_sequence(
+    image_path,
+    width=24,
+    rows=18,
+):
+
+    try:
+
+        image_data = (
+            image_path.read_bytes()
+        )
+
+    except OSError:
+
+        return None
+
+    if not image_data:
+
+        return None
+
+    encoded_image = (
+        base64.b64encode(
+            image_data
+        ).decode(
+            "ascii"
+        )
+    )
+
+    encoded_name = (
+        base64.b64encode(
+            image_path.name.encode(
+                "utf-8"
+            )
+        ).decode(
+            "ascii"
+        )
+    )
+
+    return (
+        "\033]1337;File="
+        f"name={encoded_name};"
+        f"inline=1;"
+        f"width={width};"
+        f"height={rows};"
+        f"preserveAspectRatio=1:"
+        f"{encoded_image}"
+        "\a"
+    )
 
 
 QUADRANT_GLYPHS = {
@@ -1125,17 +1212,206 @@ def ansi_pad(
     )
 
 
-def render_anime_info_card(
+def render_native_anime_info_card(
     anime,
+    image_path,
 ):
 
-    image_path = download_cover_image(
-        anime
-    )
-
-    if not image_path:
+    if not supports_native_inline_images():
 
         return False
+
+    terminal_width = (
+        shutil.get_terminal_size(
+            fallback=(
+                120,
+                30,
+            )
+        ).columns
+    )
+
+    if terminal_width < 90:
+
+        return False
+
+    # Slightly smaller native image and tighter overall card.
+    image_width = 24
+    image_rows = 18
+    gap = 3
+
+    card_width = min(
+        terminal_width - 2,
+        94,
+    )
+
+    inner_width = (
+        card_width - 2
+    )
+
+    text_width = (
+        inner_width
+        - image_width
+        - gap
+        - 2
+    )
+
+    if text_width < 42:
+
+        return False
+
+    image_sequence = (
+        build_native_image_sequence(
+            image_path,
+            width=image_width,
+            rows=image_rows,
+        )
+    )
+
+    if not image_sequence:
+
+        return False
+
+    text_lines = get_anime_card_text(
+        anime,
+        width=text_width,
+        max_rows=image_rows,
+    )
+
+    while len(
+        text_lines
+    ) < image_rows:
+
+        text_lines.append(
+            ""
+        )
+
+    print()
+
+    print(
+        f"{GREEN}"
+        f"┌"
+        f"{'─' * inner_width}"
+        f"┐"
+        f"{RESET}"
+    )
+
+    for _ in range(
+        image_rows
+    ):
+
+        print(
+            f"{GREEN}"
+            f"│"
+            f"{RESET}"
+            f"{' ' * inner_width}"
+            f"{GREEN}"
+            f"│"
+            f"{RESET}"
+        )
+
+    print(
+        f"{GREEN}"
+        f"└"
+        f"{'─' * inner_width}"
+        f"┘"
+        f"{RESET}"
+    )
+
+    print(
+        f"{DIM}"
+        f"Anime Release CLI"
+        f" | Data: "
+        f"{provider_name(anime)}"
+        f" | v{get_cli_version()}"
+        f"{RESET}"
+    )
+
+    rows_up = (
+        image_rows + 2
+    )
+
+    sys.stdout.write(
+        f"\033[{rows_up}A"
+    )
+
+    sys.stdout.write(
+        "\r"
+    )
+
+    sys.stdout.write(
+        "\033[2C"
+    )
+
+    sys.stdout.write(
+        "\0337"
+    )
+
+    sys.stdout.write(
+        image_sequence
+    )
+
+    sys.stdout.write(
+        "\0338"
+    )
+
+    text_column = (
+        2
+        + image_width
+        + gap
+    )
+
+    for index, line in enumerate(
+        text_lines
+    ):
+
+        if index > 0:
+
+            sys.stdout.write(
+                "\033[1B"
+            )
+
+        sys.stdout.write(
+            "\r"
+        )
+
+        sys.stdout.write(
+            f"\033[{text_column}C"
+        )
+
+        sys.stdout.write(
+            line
+        )
+
+    remaining_rows = (
+        image_rows
+        - len(
+            text_lines
+        )
+    )
+
+    if remaining_rows > 0:
+
+        sys.stdout.write(
+            f"\033[{remaining_rows}B"
+        )
+
+    sys.stdout.write(
+        "\033[3B"
+    )
+
+    sys.stdout.write(
+        "\r"
+    )
+
+    sys.stdout.flush()
+
+    return True
+
+
+def render_ansi_anime_info_card(
+    anime,
+    image_path,
+):
 
     terminal_width = (
         shutil.get_terminal_size(
@@ -1150,8 +1426,6 @@ def render_anime_info_card(
 
         return False
 
-    # Keep the visible dimensions at the size
-    # you preferred.
     image_width = 28
     image_rows = 22
     gap = 4
@@ -1261,6 +1535,35 @@ def render_anime_info_card(
     )
 
     return True
+
+
+def render_anime_info_card(
+    anime,
+):
+
+    image_path = download_cover_image(
+        anime
+    )
+
+    if not image_path:
+
+        return False
+
+    native_rendered = (
+        render_native_anime_info_card(
+            anime,
+            image_path,
+        )
+    )
+
+    if native_rendered:
+
+        return True
+
+    return render_ansi_anime_info_card(
+        anime,
+        image_path,
+    )
 
 
 # ============================================================

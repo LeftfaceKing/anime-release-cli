@@ -1,6 +1,6 @@
 # Anime Release CLI
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/LeftfaceKing/anime-release-cli/releases/tag/v1.2.0)
+[![Version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/LeftfaceKing/anime-release-cli/releases/tag/v1.2.1)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![CLI](https://img.shields.io/badge/interface-CLI-lightgrey)](https://github.com/LeftfaceKing/anime-release-cli)
 [![License](https://img.shields.io/badge/license-Portfolio%20%2F%20Educational-lightgrey)](https://github.com/LeftfaceKing/anime-release-cli)
@@ -12,6 +12,8 @@ Built in Python with data from AniList, Kitsu, and Tsuzuki.
 ## Features
 
 - Self-update directly from the terminal with `ani update`
+- High-resolution anime cover artwork in supported terminals
+- Automatic ANSI artwork fallback for terminals without native image support
 - Search for anime from the terminal
 - View detailed anime information
 - Browse anime by season
@@ -25,6 +27,29 @@ Built in Python with data from AniList, Kitsu, and Tsuzuki.
 - Automatic API fallback when a provider is unavailable
 - Local timezone conversion for episode release times
 - Globally accessible `ani` command with pipx
+
+## Terminal Cover Rendering
+
+The `ani info` command can display high-resolution anime cover artwork directly in supported terminals alongside the anime's metadata and synopsis.
+
+On supported terminals such as Warp, Anime Release CLI uses native inline-image rendering for significantly improved image quality.
+
+The information card includes:
+
+- Cover artwork
+- Format
+- Episode count
+- Airing status
+- Studio
+- Source material
+- Genres
+- Airing dates
+- Next episode information when available
+- Synopsis
+
+If native image rendering is unavailable, the CLI automatically falls back to ANSI terminal artwork.
+
+Downloaded cover images are cached locally to avoid unnecessary repeated downloads.
 
 ## Data Architecture
 
@@ -127,7 +152,7 @@ ani --version
 Current release:
 
 ```text
-Anime Release CLI 1.2.0
+Anime Release CLI 1.2.1
 ```
 
 ## Commands
@@ -438,3 +463,33 @@ The project demonstrates API integration, GraphQL and REST consumption, provider
 This project is intended for educational and portfolio use.
 
 Anime information belongs to its respective data providers and rights holders.
+
+## Release History
+
+### v1.2.1
+
+- Added high-resolution native terminal cover rendering
+- Added automatic terminal image capability detection
+- Added ANSI artwork fallback for unsupported terminals
+- Improved anime information card proportions and spacing
+- Reduced unused card space
+- Preserved cover caching and multi-provider API fallback
+
+### v1.2.0
+
+- Added built-in `ani update` command
+- Added GitHub-based pipx self-update support
+
+### v1.1.0
+
+- Added anime cover artwork to `ani info`
+- Added local cover image caching
+- Added ANSI terminal image rendering
+- Added formatted anime information cards
+
+### v1.0.0
+
+- First stable release
+- Added AniList, Kitsu, and Tsuzuki integration
+- Added search, info, schedules, relations, studios, seasons, and upcoming releases
+- Added automatic API fallback
