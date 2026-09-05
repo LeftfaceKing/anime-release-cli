@@ -2056,6 +2056,10 @@ def deduplicate_schedule_entries(
             {},
         )
 
+        media_id = media.get(
+            "id"
+        )
+
         title_data = media.get(
             "title",
             {},
@@ -2068,17 +2072,25 @@ def deduplicate_schedule_entries(
             or title_data.get(
                 "romaji"
             )
+            or title_data.get(
+                "native"
+            )
             or "Unknown Anime"
         )
 
-        episode = item.get(
-            "episode"
-        )
-
-        key = (
-            title.strip().lower(),
-            episode,
-        )
+        # Prefer the provider's anime ID so different
+        # episodes of the same anime are recognized
+        # as belonging to the same series.
+        if media_id is not None:
+            key = (
+                "id",
+                media_id,
+            )
+        else:
+            key = (
+                "title",
+                title.strip().lower(),
+            )
 
         existing = deduplicated.get(
             key
@@ -2092,25 +2104,59 @@ def deduplicate_schedule_entries(
 
             continue
 
-        existing_airing = (
-            existing.get(
-                "airingAt"
-            )
-            or 9999999999
+        existing_episode = existing.get(
+            "episode"
         )
 
-        new_airing = (
-            item.get(
-                "airingAt"
-            )
-            or 9999999999
+        new_episode = item.get(
+            "episode"
         )
 
-        if new_airing < existing_airing:
+        # Keep the newest / highest episode number.
+        if (
+            new_episode is not None
+            and (
+                existing_episode is None
+                or new_episode
+                > existing_episode
+            )
+        ):
 
             deduplicated[
                 key
             ] = item
+
+            continue
+
+        # If both entries are for the same episode,
+        # keep the earliest airing time.
+        if (
+            new_episode
+            == existing_episode
+        ):
+
+            existing_airing = (
+                existing.get(
+                    "airingAt"
+                )
+                or 9999999999
+            )
+
+            new_airing = (
+                item.get(
+                    "airingAt"
+                )
+                or 9999999999
+            )
+
+            if (
+                new_airing
+                < existing_airing
+            ):
+
+                deduplicated[
+                    key
+                ] = item
 
     results = list(
         deduplicated.values()
