@@ -28,6 +28,16 @@ Built in Python with data from AniList, Kitsu, and Tsuzuki.
 - Local timezone conversion for episode release times
 - Globally accessible `ani` command with pipx
 
+## Anime Information
+
+Search for an anime and view detailed release information, episode count, airing dates, synopsis, and cover artwork directly in your terminal.
+
+```bash
+ani info "False Memory"
+```
+
+![Anime Release CLI - False Memory](assets/ani-info-false-memory.png) 
+
 ## Terminal Cover Rendering
 
 The `ani info` command can display high-resolution anime cover artwork directly in supported terminals alongside the anime's metadata and synopsis.
@@ -115,16 +125,6 @@ This allows users to search anime, inspect seasonal releases, check airing sched
 - Python 3.10+
 - Internet connection
 - pipx recommended for global installation
-
-## Anime Information
-
-Search for an anime and view detailed release information, episode count, airing dates, synopsis, and cover artwork directly in your terminal.
-
-```bash
-ani info "False Memory"
-```
-
-![Anime Release CLI - False Memory](assets/ani-info-false-memory.png) 
 
 ## Installation
 
