@@ -493,3 +493,12 @@ Anime information belongs to its respective data providers and rights holders.
 - Added AniList, Kitsu, and Tsuzuki integration
 - Added search, info, schedules, relations, studios, seasons, and upcoming releases
 - Added automatic API fallback
+
+### v1.3.0
+
+- Added AnimeSchedule as a third daily schedule provider
+- Added authenticated AnimeSchedule API fallback support
+- Added AniList → Tsuzuki → AnimeSchedule fallback for daily schedules
+- Added schedule deduplication by anime title and episode
+- Preserved earliest airing time when duplicate schedule entries are returned
+- Improved resilience during provider outages

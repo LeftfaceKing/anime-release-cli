@@ -65,7 +65,7 @@ def get_cli_version():
 
     except PackageNotFoundError:
 
-        return "1.2.1"
+        return "1.3.0"
 
 
 def anime_title(anime):
