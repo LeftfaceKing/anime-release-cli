@@ -23,6 +23,7 @@ import requests
 
 from PIL import (
     Image,
+    ImageDraw,
     ImageEnhance,
     ImageFilter,
 )
@@ -70,17 +71,22 @@ def get_cli_version():
 
 def anime_title(anime):
 
+    title_data = anime.get(
+        "title",
+        {},
+    )
+
     return (
-        anime[
-            "title"
-        ][
+        title_data.get(
             "english"
-        ]
-        or anime[
-            "title"
-        ][
+        )
+        or title_data.get(
             "romaji"
-        ]
+        )
+        or title_data.get(
+            "native"
+        )
+        or "Unknown Anime"
     )
 
 
@@ -97,6 +103,10 @@ def provider_name(anime):
     if provider == "tsuzuki":
 
         return "Tsuzuki"
+
+    if provider == "animeschedule":
+
+        return "AnimeSchedule"
 
     return "AniList"
 
@@ -121,6 +131,15 @@ def print_fallback_notice(
         print(
             "AniList is unavailable. "
             "Using Tsuzuki schedule fallback."
+        )
+
+    elif provider == "animeschedule":
+
+        print()
+
+        print(
+            "AniList and Tsuzuki are unavailable. "
+            "Using AnimeSchedule fallback."
         )
 
 
@@ -345,7 +364,6 @@ def clean_description(
     return description.strip()
 
 
-
 # ============================================================
 # NATIVE TERMINAL IMAGE SUPPORT
 # ============================================================
@@ -523,15 +541,6 @@ def crop_cover_for_terminal(
         image.size
     )
 
-    # A terminal character is normally taller
-    # than it is wide.
-    #
-    # At 28 x 22 cells, the visible poster area
-    # is much closer to a portrait ratio than
-    # a literal 28 / 22 pixel image.
-    #
-    # This factor preserves the proportions of
-    # the poster while allowing quadrant rendering.
     cell_aspect = 2.0
 
     visible_width = (
@@ -744,16 +753,6 @@ def render_cover_ansi(
                 rows,
             )
 
-            # Four logical source pixels are used
-            # for every terminal character:
-            #
-            # TL TR
-            # BL BR
-            #
-            # This doubles the horizontal sampling
-            # compared with the previous half-block
-            # renderer while keeping the same visible
-            # 28 x 22 terminal footprint.
             target_width = (
                 width * 2
             )
@@ -762,8 +761,6 @@ def render_cover_ansi(
                 rows * 2
             )
 
-            # Work at a higher intermediate
-            # resolution before final reduction.
             supersample = 4
 
             high_width = (
@@ -1244,7 +1241,6 @@ def render_native_anime_info_card(
 
         return False
 
-    # Slightly smaller native image and tighter overall card.
     image_width = 24
     image_rows = 18
     gap = 3
@@ -1576,9 +1572,163 @@ def render_anime_info_card(
     )
 
 
+def get_update_banner_path():
+
+    cache_directory = (
+        get_cover_cache_directory()
+        .parent
+    )
+
+    banner_path = (
+        cache_directory
+        / "update-banner.png"
+    )
+
+    if banner_path.exists():
+
+        return banner_path
+
+    image = Image.new(
+        "RGB",
+        (
+            900,
+            420,
+        ),
+        (
+            12,
+            16,
+            14,
+        ),
+    )
+
+    draw = ImageDraw.Draw(
+        image
+    )
+
+    draw.rectangle(
+        (
+            20,
+            20,
+            880,
+            400,
+        ),
+        outline=(
+            102,
+            255,
+            0,
+        ),
+        width=6,
+    )
+
+    draw.text(
+        (
+            70,
+            120,
+        ),
+        "ANIME RELEASE CLI",
+        fill=(
+            102,
+            255,
+            0,
+        ),
+    )
+
+    draw.text(
+        (
+            70,
+            190,
+        ),
+        "UPDATE",
+        fill=(
+            235,
+            235,
+            235,
+        ),
+    )
+
+    draw.text(
+        (
+            70,
+            260,
+        ),
+        f"v{get_cli_version()}",
+        fill=(
+            135,
+            135,
+            135,
+        ),
+    )
+
+    image.save(
+        banner_path
+    )
+
+    return banner_path
+
+
+def render_update_visual():
+
+    try:
+
+        image_path = (
+            get_update_banner_path()
+        )
+
+    except OSError:
+
+        return False
+
+    if supports_native_inline_images():
+
+        image_sequence = (
+            build_native_image_sequence(
+                image_path,
+                width=42,
+                rows=12,
+            )
+        )
+
+        if image_sequence:
+
+            print()
+
+            sys.stdout.write(
+                image_sequence
+            )
+
+            sys.stdout.write(
+                "\n"
+            )
+
+            sys.stdout.flush()
+
+            return True
+
+    image_lines = render_cover_ansi(
+        image_path,
+        width=42,
+        rows=12,
+    )
+
+    if not image_lines:
+
+        return False
+
+    print()
+
+    for line in image_lines:
+
+        print(
+            line
+        )
+
+    return True
+
+
 # ============================================================
 # STANDARD CLI
 # ============================================================
+
 
 def display_anime_detail(
     anime,
@@ -1630,14 +1780,25 @@ def display_anime_detail(
 
     return False
 
-def print_anime_entry(anime):
+
+def print_anime_entry(
+    anime,
+    index=None,
+):
 
     print()
 
-    print(
-        anime_title(
-            anime
+    prefix = ""
+
+    if index is not None:
+
+        prefix = (
+            f"{index}. "
         )
+
+    print(
+        f"{prefix}"
+        f"{anime_title(anime)}"
     )
 
     print(
@@ -1732,59 +1893,10 @@ def choose_anime(title):
         start=1,
     ):
 
-        print()
-
-        print(
-            f"{index}. "
-            f"{anime_title(anime)}"
+        print_anime_entry(
+            anime,
+            index=index,
         )
-
-        print(
-            f"   Status:   "
-            f"{anime.get('status') or 'TBA'}"
-        )
-
-        print(
-            f"   Format:   "
-            f"{anime.get('format') or 'TBA'}"
-        )
-
-        print(
-            f"   Episodes: "
-            f"{anime.get('episodes') or 'TBA'}"
-        )
-
-        if (
-            anime.get(
-                "season"
-            )
-            and anime.get(
-                "seasonYear"
-            )
-        ):
-
-            print(
-                f"   Season:   "
-                f"{anime['season'].title()} "
-                f"{anime['seasonYear']}"
-            )
-
-        studios = (
-            anime.get(
-                "studios",
-                {},
-            ).get(
-                "nodes",
-                [],
-            )
-        )
-
-        if studios:
-
-            print(
-                f"   Studio:   "
-                f"{studios[0]['name']}"
-            )
 
     while True:
 
@@ -1817,28 +1929,140 @@ def choose_anime(title):
         )
 
 
+def find_full_anime_details(
+    title,
+):
+
+    entries = get_anime_entries(
+        title
+    )
+
+    if not entries:
+
+        return None
+
+    normalized_title = (
+        title.strip().lower()
+    )
+
+    for anime in entries:
+
+        titles = anime.get(
+            "title",
+            {},
+        )
+
+        candidates = [
+            titles.get(
+                "english"
+            ),
+            titles.get(
+                "romaji"
+            ),
+            titles.get(
+                "native"
+            ),
+        ]
+
+        for candidate in candidates:
+
+            if (
+                candidate
+                and candidate.strip().lower()
+                == normalized_title
+            ):
+
+                return anime
+
+    return entries[0]
+
+
+def display_anime_by_title(
+    title,
+):
+
+    anime = find_full_anime_details(
+        title
+    )
+
+    if not anime:
+
+        print()
+
+        print(
+            "Unable to load anime artwork."
+        )
+
+        return False
+
+    return display_anime_detail(
+        anime
+    )
+
+
+def choose_from_anime_list(
+    anime_list,
+):
+
+    if not anime_list:
+
+        return None
+
+    print()
+
+    while True:
+
+        choice = input(
+            "Choose an entry for details "
+            "(or press Enter to finish): "
+        ).strip()
+
+        if not choice:
+
+            return None
+
+        try:
+
+            choice = int(
+                choice
+            )
+
+        except ValueError:
+
+            print(
+                "Invalid selection."
+            )
+
+            continue
+
+        if (
+            1
+            <= choice
+            <= len(anime_list)
+        ):
+
+            return anime_list[
+                choice - 1
+            ]
+
+        print(
+            "Invalid selection."
+        )
+
+
 def handle_search(title):
 
     anime = choose_anime(
         title
     )
 
-    if anime:
+    if not anime:
 
-        print()
+        return
 
-        print(
-            format_anime_details(
-                anime
-            )
-        )
-
-        print()
-
-        print(
-            f"Data source: "
-            f"{provider_name(anime)}"
-        )
+    display_anime_detail(
+        anime
+    )
 
 
 def handle_info(title):
@@ -1855,6 +2079,7 @@ def handle_info(title):
         anime
     )
 
+
 def handle_schedule(title):
 
     anime = choose_anime(
@@ -1865,12 +2090,8 @@ def handle_schedule(title):
 
         return
 
-    print()
-
-    print(
-        format_anime_details(
-            anime
-        )
+    display_anime_detail(
+        anime
     )
 
     print()
@@ -1915,10 +2136,20 @@ def handle_schedule(title):
         "episode"
     )
 
+    airing_at = next_episode.get(
+        "airingAt"
+    )
+
+    if not airing_at:
+
+        print(
+            "Episode date is currently TBA."
+        )
+
+        return
+
     date = datetime.fromtimestamp(
-        next_episode[
-            "airingAt"
-        ]
+        airing_at
     ).astimezone()
 
     if episode:
@@ -1950,6 +2181,10 @@ def handle_relations(title):
     if not anime:
 
         return
+
+    display_anime_detail(
+        anime
+    )
 
     if (
         anime.get(
@@ -2023,6 +2258,7 @@ def handle_relations(title):
     ]
 
     grouped = {}
+    selectable_nodes = []
 
     for relation in relations:
 
@@ -2049,6 +2285,7 @@ def handle_relations(title):
         )
 
     displayed = set()
+    display_index = 1
 
     for relation_type in (
         relation_order
@@ -2127,13 +2364,20 @@ def handle_relations(title):
                 )
 
             print(
-                f"  {title_text}"
+                f"  {display_index}. "
+                f"{title_text}"
             )
 
             print(
-                f"    "
+                f"     "
                 f"{' | '.join(details)}"
             )
+
+            selectable_nodes.append(
+                node
+            )
+
+            display_index += 1
 
     for (
         relation_type,
@@ -2156,8 +2400,29 @@ def handle_relations(title):
         for node in nodes:
 
             print(
-                f"  {anime_title(node)}"
+                f"  {display_index}. "
+                f"{anime_title(node)}"
             )
+
+            selectable_nodes.append(
+                node
+            )
+
+            display_index += 1
+
+    selected = choose_from_anime_list(
+        selectable_nodes
+    )
+
+    if not selected:
+
+        return
+
+    display_anime_by_title(
+        anime_title(
+            selected
+        )
+    )
 
 
 def handle_studio(studio):
@@ -2174,6 +2439,8 @@ def handle_studio(studio):
 
         return
 
+    print()
+
     print(
         studio.upper()
     )
@@ -2182,11 +2449,29 @@ def handle_studio(studio):
         "─" * 60
     )
 
-    for anime in anime_list:
+    for index, anime in enumerate(
+        anime_list,
+        start=1,
+    ):
 
         print_anime_entry(
-            anime
+            anime,
+            index=index,
         )
+
+    selected = choose_from_anime_list(
+        anime_list
+    )
+
+    if not selected:
+
+        return
+
+    display_anime_by_title(
+        anime_title(
+            selected
+        )
+    )
 
 
 def handle_season(
@@ -2303,10 +2588,14 @@ def handle_season(
 
         return
 
-    for anime in anime_list:
+    for index, anime in enumerate(
+        anime_list,
+        start=1,
+    ):
 
         print_anime_entry(
-            anime
+            anime,
+            index=index,
         )
 
     print()
@@ -2315,6 +2604,30 @@ def handle_season(
         f"Data source: "
         f"{provider_name(anime_list[0])}"
     )
+
+    selected = choose_from_anime_list(
+        anime_list
+    )
+
+    if not selected:
+
+        return
+
+    if get_cover_image_url(
+        selected
+    ):
+
+        display_anime_detail(
+            selected
+        )
+
+    else:
+
+        display_anime_by_title(
+            anime_title(
+                selected
+            )
+        )
 
 
 def handle_upcoming():
@@ -2349,7 +2662,10 @@ def handle_upcoming():
         "─" * 60
     )
 
-    for anime in anime_list:
+    for index, anime in enumerate(
+        anime_list,
+        start=1,
+    ):
 
         title = anime_title(
             anime
@@ -2364,11 +2680,12 @@ def handle_upcoming():
         print()
 
         print(
-            title
+            f"{index}. "
+            f"{title}"
         )
 
         print(
-            f"  Start:    {start}"
+            f"   Start:    {start}"
         )
 
         if anime.get(
@@ -2376,7 +2693,7 @@ def handle_upcoming():
         ):
 
             print(
-                f"  Format:   "
+                f"   Format:   "
                 f"{anime['format']}"
             )
 
@@ -2385,6 +2702,20 @@ def handle_upcoming():
     print(
         f"Data source: "
         f"{provider_name(anime_list[0])}"
+    )
+
+    selected = choose_from_anime_list(
+        anime_list
+    )
+
+    if not selected:
+
+        return
+
+    display_anime_by_title(
+        anime_title(
+            selected
+        )
     )
 
 
@@ -2432,7 +2763,10 @@ def print_airing_schedule(
         ),
     )
 
-    for item in schedules:
+    for index, item in enumerate(
+        schedules,
+        start=1,
+    ):
 
         title = anime_title(
             item[
@@ -2456,7 +2790,10 @@ def print_airing_schedule(
             else "Episode TBA"
         )
 
-        if provider == "tsuzuki":
+        if provider in (
+            "tsuzuki",
+            "animeschedule",
+        ):
 
             air_type = (
                 item.get(
@@ -2495,6 +2832,7 @@ def print_airing_schedule(
                 )
 
             print(
+                f"{index}. "
                 f"{time.strftime('%I:%M %p')} "
                 f"{episode_text} "
                 f"{title}"
@@ -2504,6 +2842,7 @@ def print_airing_schedule(
         else:
 
             print(
+                f"{index}. "
                 f"{time.strftime('%I:%M %p')} "
                 f"{episode_text} "
                 f"{title}"
@@ -2511,16 +2850,62 @@ def print_airing_schedule(
 
     print()
 
-    if provider == "tsuzuki":
+    print(
+        f"Data source: "
+        f"{provider_name(schedules[0])}"
+    )
+
+    print()
+
+    while True:
+
+        choice = input(
+            "Choose an entry for details "
+            "(or press Enter to finish): "
+        ).strip()
+
+        if not choice:
+
+            return
+
+        try:
+
+            choice = int(
+                choice
+            )
+
+        except ValueError:
+
+            print(
+                "Invalid selection."
+            )
+
+            continue
+
+        if (
+            1
+            <= choice
+            <= len(schedules)
+        ):
+
+            selected = schedules[
+                choice - 1
+            ]
+
+            selected_title = anime_title(
+                selected[
+                    "media"
+                ]
+            )
+
+            display_anime_by_title(
+                selected_title
+            )
+
+            return
 
         print(
-            "Data source: Tsuzuki"
-        )
-
-    else:
-
-        print(
-            "Data source: AniList"
+            "Invalid selection."
         )
 
 
@@ -2837,6 +3222,10 @@ def handle_airing(title):
         anime
     )
 
+    display_anime_by_title(
+        title_text
+    )
+
     print()
 
     print(
@@ -2970,7 +3359,7 @@ def handle_airing(title):
         )
 
         print(
-            "Metadata source: AniList"
+            "Metadata source: AniList/Kitsu"
         )
 
         return
@@ -3131,9 +3520,8 @@ def handle_airing(title):
     )
 
     print(
-        "Metadata source: AniList"
+        "Metadata source: AniList/Kitsu"
     )
-
 
 
 UPDATE_REPOSITORY = (
@@ -3144,6 +3532,8 @@ UPDATE_REPOSITORY = (
 
 
 def handle_update():
+
+    render_update_visual()
 
     pipx_path = shutil.which(
         "pipx"
