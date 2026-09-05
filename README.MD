@@ -116,6 +116,16 @@ This allows users to search anime, inspect seasonal releases, check airing sched
 - Internet connection
 - pipx recommended for global installation
 
+## Anime Information
+
+Search for an anime and view detailed release information, episode count, airing dates, synopsis, and cover artwork directly in your terminal.
+
+```bash
+ani info "False Memory"
+```
+
+![Anime Release CLI - False Memory](assets/ani-info-false-memory.png) 
+
 ## Installation
 
 Anime Release CLI is designed to be installed with pipx.
@@ -152,7 +162,7 @@ ani --version
 Current release:
 
 ```text
-Anime Release CLI 1.2.1
+Anime Release CLI 1.3.0
 ```
 
 ## Commands
