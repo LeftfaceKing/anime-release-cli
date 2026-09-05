@@ -1159,25 +1159,112 @@ def get_kitsu_anime_entries(
     title,
 ):
 
-    data = send_kitsu_request(
-        "/anime",
-        {
-            "filter[text]": title,
-            "page[limit]": 20,
-        },
-    )
+    results = []
+    seen_ids = set()
 
-    results = data.get(
-        "data",
-        [],
-    )
+    page_limit = 20
+    max_pages = 5
 
-    return [
-        normalize_kitsu_anime(
-            anime
+    for page in range(
+        max_pages
+    ):
+
+        offset = (
+            page
+            * page_limit
         )
-        for anime in results
-    ]
+
+        data = send_kitsu_request(
+            "/anime",
+            {
+                "filter[text]": title,
+                "page[limit]": page_limit,
+                "page[offset]": offset,
+            },
+        )
+
+        page_results = data.get(
+            "data",
+            [],
+        )
+
+        if not page_results:
+
+            break
+
+        for anime in page_results:
+
+            anime_id = anime.get(
+                "id"
+            )
+
+            if anime_id in seen_ids:
+
+                continue
+
+            if anime_id is not None:
+
+                seen_ids.add(
+                    anime_id
+                )
+
+            results.append(
+                normalize_kitsu_anime(
+                    anime
+                )
+            )
+
+        if len(
+            page_results
+        ) < page_limit:
+
+            break
+
+    def sort_key(
+        anime,
+    ):
+
+        status = anime.get(
+            "status"
+        )
+
+        if status == "RELEASING":
+
+            status_priority = 0
+
+        elif status == "NOT_YET_RELEASED":
+
+            status_priority = 1
+
+        else:
+
+            status_priority = 2
+
+        year = (
+            anime.get(
+                "seasonYear"
+            )
+            or 0
+        )
+
+        popularity = (
+            anime.get(
+                "_popularityRank"
+            )
+            or 999999
+        )
+
+        return (
+            status_priority,
+            -year,
+            popularity,
+        )
+
+    results.sort(
+        key=sort_key
+    )
+
+    return results
 
 
 def get_anime_entries(title):

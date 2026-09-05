@@ -916,11 +916,21 @@ def get_anime_card_text(
         anime
     )
 
-    lines.append(
-        f"{GREEN}"
-        f"{title.upper()}"
-        f"{RESET}"
+    title_lines = textwrap.wrap(
+        title.upper(),
+        width=max(
+            20,
+            width,
+        ),
     )
+
+    for title_line in title_lines:
+
+        lines.append(
+            f"{GREEN}"
+            f"{title_line}"
+            f"{RESET}"
+        )
 
     lines.append(
         ""
@@ -1570,6 +1580,55 @@ def render_anime_info_card(
 # STANDARD CLI
 # ============================================================
 
+def display_anime_detail(
+    anime,
+    show_description=True,
+):
+
+    rendered = render_anime_info_card(
+        anime
+    )
+
+    if rendered:
+
+        return True
+
+    print()
+
+    print(
+        format_anime_details(
+            anime
+        )
+    )
+
+    if show_description:
+
+        description = clean_description(
+            anime.get(
+                "description"
+            )
+        )
+
+        if description:
+
+            print()
+
+            print(
+                "Description:"
+            )
+
+            print(
+                description
+            )
+
+    print()
+
+    print(
+        f"Data source: "
+        f"{provider_name(anime)}"
+    )
+
+    return False
 
 def print_anime_entry(anime):
 
@@ -1792,47 +1851,9 @@ def handle_info(title):
 
         return
 
-    rendered = render_anime_info_card(
+    display_anime_detail(
         anime
     )
-
-    if rendered:
-
-        return
-
-    print()
-
-    print(
-        format_anime_details(
-            anime
-        )
-    )
-
-    description = clean_description(
-        anime.get(
-            "description"
-        )
-    )
-
-    if description:
-
-        print()
-
-        print(
-            "Description:"
-        )
-
-        print(
-            description
-        )
-
-    print()
-
-    print(
-        f"Data source: "
-        f"{provider_name(anime)}"
-    )
-
 
 def handle_schedule(title):
 
@@ -2774,9 +2795,39 @@ def print_tsuzuki_note(
 
 def handle_airing(title):
 
-    anime = choose_tsuzuki_airing(
-        title
-    )
+    try:
+
+        anime = choose_tsuzuki_airing(
+            title
+        )
+
+    except TsuzukiAPIError as error:
+
+        print()
+
+        print(
+            f"Tsuzuki unavailable: "
+            f"{error}"
+        )
+
+        print(
+            "Using anime metadata "
+            "fallback."
+        )
+
+        anime = choose_anime(
+            title
+        )
+
+        if not anime:
+
+            return
+
+        display_anime_detail(
+            anime
+        )
+
+        return
 
     if not anime:
 
@@ -3047,7 +3098,9 @@ def handle_airing(title):
 
             if air_type == "SUB":
 
-                platform = "Amazon Prime Video"
+                platform = (
+                    "Amazon Prime Video"
+                )
 
             if platform:
 
