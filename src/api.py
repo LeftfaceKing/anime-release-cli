@@ -1,3 +1,4 @@
+import os
 import requests
 
 from datetime import (
@@ -9,6 +10,7 @@ from datetime import (
 ANILIST_API_URL = "https://graphql.anilist.co"
 KITSU_API_URL = "https://kitsu.io/api/edge"
 TSUZUKI_API_URL = "https://tsuzuki.top/api/v1"
+ANIMESCHEDULE_API_URL = "https://animeschedule.net/api/v3"
 
 
 class AniListAPIError(Exception):
@@ -25,6 +27,12 @@ class KitsuAPIError(Exception):
 
 class TsuzukiAPIError(Exception):
     """Raised when the Tsuzuki API cannot complete a request."""
+
+    pass
+
+
+class AnimeScheduleAPIError(Exception):
+    """Raised when AnimeSchedule cannot complete a request."""
 
     pass
 
@@ -484,7 +492,7 @@ def send_kitsu_request(
     headers = {
         "Accept": "application/vnd.api+json",
         "Content-Type": "application/vnd.api+json",
-        "User-Agent": "Anime-Release-CLI/1.0.0",
+        "User-Agent": "Anime-Release-CLI/1.2.1",
     }
 
     try:
@@ -561,7 +569,7 @@ def send_tsuzuki_request(
 
     headers = {
         "Accept": "application/json",
-        "User-Agent": "Anime-Release-CLI/1.0.0",
+        "User-Agent": "Anime-Release-CLI/1.2.1",
     }
 
     try:
@@ -694,6 +702,108 @@ def send_tsuzuki_request(
         )
 
     return data
+
+
+def send_animeschedule_request(
+    endpoint,
+    params=None,
+):
+
+    url = (
+        f"{ANIMESCHEDULE_API_URL}"
+        f"{endpoint}"
+    )
+
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Anime-Release-CLI/1.2.1",
+    }
+
+    token = os.environ.get(
+        "ANIMESCHEDULE_TOKEN"
+    )
+
+    if token:
+
+        headers[
+            "Authorization"
+        ] = f"Bearer {token}"
+
+    try:
+
+        response = requests.get(
+            url,
+            params=params or {},
+            headers=headers,
+            timeout=20,
+        )
+
+    except requests.exceptions.Timeout as exc:
+
+        raise AnimeScheduleAPIError(
+            "AnimeSchedule request timed out."
+        ) from exc
+
+    except requests.exceptions.ConnectionError as exc:
+
+        raise AnimeScheduleAPIError(
+            "Unable to connect to AnimeSchedule."
+        ) from exc
+
+    except requests.exceptions.RequestException as exc:
+
+        raise AnimeScheduleAPIError(
+            "Unable to complete the "
+            "AnimeSchedule request."
+        ) from exc
+
+    if response.status_code == 401:
+
+        raise AnimeScheduleAPIError(
+            "AnimeSchedule rejected the "
+            "API authorization."
+        )
+
+    if response.status_code == 403:
+
+        raise AnimeScheduleAPIError(
+            "AnimeSchedule denied the request."
+        )
+
+    if response.status_code == 429:
+
+        raise AnimeScheduleAPIError(
+            "AnimeSchedule rate limit reached."
+        )
+
+    if response.status_code >= 500:
+
+        raise AnimeScheduleAPIError(
+            f"AnimeSchedule is currently unavailable "
+            f"(HTTP {response.status_code})."
+        )
+
+    try:
+
+        response.raise_for_status()
+
+    except requests.exceptions.HTTPError as exc:
+
+        raise AnimeScheduleAPIError(
+            f"AnimeSchedule request failed "
+            f"(HTTP {response.status_code})."
+        ) from exc
+
+    try:
+
+        return response.json()
+
+    except ValueError as exc:
+
+        raise AnimeScheduleAPIError(
+            "AnimeSchedule returned an "
+            "invalid response."
+        ) from exc
 
 
 def parse_kitsu_date(value):
@@ -1602,32 +1712,514 @@ def get_tsuzuki_airing_day(
     return schedules
 
 
+def parse_animeschedule_datetime(
+    value,
+):
+
+    if not value:
+
+        return None
+
+    if value.startswith(
+        "0001-01-01"
+    ):
+
+        return None
+
+    try:
+
+        return datetime.fromisoformat(
+            value.replace(
+                "Z",
+                "+00:00",
+            )
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return None
+
+
+def get_animeschedule_platform(
+    streams,
+):
+
+    if not streams:
+
+        return None
+
+    if isinstance(
+        streams,
+        dict,
+    ):
+
+        platform = (
+            streams.get(
+                "name"
+            )
+            or streams.get(
+                "platform"
+            )
+        )
+
+        return platform
+
+    if isinstance(
+        streams,
+        list,
+    ):
+
+        for stream in streams:
+
+            if not isinstance(
+                stream,
+                dict,
+            ):
+
+                continue
+
+            platform = (
+                stream.get(
+                    "name"
+                )
+                or stream.get(
+                    "platform"
+                )
+            )
+
+            if platform:
+
+                return platform
+
+    return None
+
+
+def normalize_animeschedule_entry(
+    entry,
+):
+
+    romaji = (
+        entry.get(
+            "romaji"
+        )
+        or entry.get(
+            "title"
+        )
+        or entry.get(
+            "english"
+        )
+        or "Unknown Anime"
+    )
+
+    english = (
+        entry.get(
+            "english"
+        )
+        or entry.get(
+            "title"
+        )
+        or romaji
+    )
+
+    episode_date = (
+        parse_animeschedule_datetime(
+            entry.get(
+                "episodeDate"
+            )
+        )
+    )
+
+    if not episode_date:
+
+        return None
+
+    air_type = (
+        entry.get(
+            "airType"
+        )
+        or ""
+    )
+
+    if air_type:
+
+        air_type = (
+            air_type.upper()
+        )
+
+    return {
+        "airingAt": int(
+            episode_date.timestamp()
+        ),
+
+        "episode": entry.get(
+            "episodeNumber"
+        ),
+
+        "media": {
+            "title": {
+                "romaji": romaji,
+                "english": english,
+            }
+        },
+
+        "_provider": "animeschedule",
+
+        "airType": air_type,
+
+        "platform": (
+            get_animeschedule_platform(
+                entry.get(
+                    "streams"
+                )
+            )
+        ),
+
+        "exact": True,
+
+        "estimated": False,
+
+        "isBreak": False,
+
+        "note": entry.get(
+            "delayedText"
+        ),
+
+        "route": entry.get(
+            "route"
+        ),
+
+        "airingStatus": entry.get(
+            "airingStatus"
+        ),
+    }
+
+
+def get_animeschedule_airing_day(
+    days_from_today=0,
+):
+
+    start, end = local_day_bounds(
+        days_from_today
+    )
+
+    target_date = (
+        start.date()
+    )
+
+    iso_calendar = (
+        target_date.isocalendar()
+    )
+
+    data = send_animeschedule_request(
+        "/timetables",
+        {
+            "year": iso_calendar.year,
+            "week": iso_calendar.week,
+        },
+    )
+
+    if isinstance(
+        data,
+        dict,
+    ):
+
+        entries = (
+            data.get(
+                "data"
+            )
+            or data.get(
+                "timetables"
+            )
+            or data.get(
+                "anime"
+            )
+            or []
+        )
+
+    elif isinstance(
+        data,
+        list,
+    ):
+
+        entries = data
+
+    else:
+
+        raise AnimeScheduleAPIError(
+            "AnimeSchedule returned an "
+            "unexpected timetable response."
+        )
+
+    schedules = []
+
+    seen = set()
+
+    for entry in entries:
+
+        if not isinstance(
+            entry,
+            dict,
+        ):
+
+            continue
+
+        normalized = (
+            normalize_animeschedule_entry(
+                entry
+            )
+        )
+
+        if not normalized:
+
+            continue
+
+        airing_at = normalized.get(
+            "airingAt"
+        )
+
+        if not airing_at:
+
+            continue
+
+        local_airing_time = (
+            datetime.fromtimestamp(
+                airing_at,
+                tz=start.tzinfo,
+            )
+        )
+
+        if not (
+            start
+            <= local_airing_time
+            < end
+        ):
+
+            continue
+
+        key = (
+            normalized.get(
+                "airingAt"
+            ),
+            normalized.get(
+                "episode"
+            ),
+            normalized.get(
+                "airType"
+            ),
+            normalized.get(
+                "media",
+                {},
+            ).get(
+                "title",
+                {},
+            ).get(
+                "romaji"
+            ),
+        )
+
+        if key in seen:
+
+            continue
+
+        seen.add(
+            key
+        )
+
+        schedules.append(
+            normalized
+        )
+
+    schedules.sort(
+        key=lambda item: (
+            item.get(
+                "airingAt"
+            )
+            or 0
+        )
+    )
+
+    return schedules
+
+def deduplicate_schedule_entries(
+    schedules,
+):
+
+    deduplicated = {}
+
+    for item in schedules:
+
+        media = item.get(
+            "media",
+            {},
+        )
+
+        title_data = media.get(
+            "title",
+            {},
+        )
+
+        title = (
+            title_data.get(
+                "english"
+            )
+            or title_data.get(
+                "romaji"
+            )
+            or "Unknown Anime"
+        )
+
+        episode = item.get(
+            "episode"
+        )
+
+        key = (
+            title.strip().lower(),
+            episode,
+        )
+
+        existing = deduplicated.get(
+            key
+        )
+
+        if existing is None:
+
+            deduplicated[
+                key
+            ] = item
+
+            continue
+
+        existing_airing = (
+            existing.get(
+                "airingAt"
+            )
+            or 9999999999
+        )
+
+        new_airing = (
+            item.get(
+                "airingAt"
+            )
+            or 9999999999
+        )
+
+        if new_airing < existing_airing:
+
+            deduplicated[
+                key
+            ] = item
+
+    results = list(
+        deduplicated.values()
+    )
+
+    results.sort(
+        key=lambda item: (
+            item.get(
+                "airingAt"
+            )
+            or 0
+        )
+    )
+
+    return results
+
 def get_schedule_with_fallback(
     days_from_today,
 ):
 
+    anilist_error_message = None
+    tsuzuki_error_message = None
+    animeschedule_error_message = None
+
     try:
 
-        return get_anilist_airing_day(
-            days_from_today
-        )
-
-    except AniListAPIError as anilist_error:
-
-        try:
-
-            return get_tsuzuki_airing_day(
+        schedules = (
+            get_anilist_airing_day(
                 days_from_today
             )
+        )
 
-        except TsuzukiAPIError as tsuzuki_error:
+        if schedules:
 
-            raise AniListAPIError(
-                f"AniList unavailable: "
-                f"{anilist_error} "
-                f"Tsuzuki schedule fallback also failed: "
-                f"{tsuzuki_error}"
-            ) from tsuzuki_error
+            return deduplicate_schedule_entries(
+                schedules
+            )
+
+        anilist_error_message = (
+            "AniList returned no "
+            "schedule entries."
+        )
+
+    except AniListAPIError as error:
+
+        anilist_error_message = str(
+            error
+        )
+
+    try:
+
+        schedules = (
+            get_tsuzuki_airing_day(
+                days_from_today
+            )
+        )
+
+        if schedules:
+
+            return deduplicate_schedule_entries(
+                schedules
+            )
+
+        tsuzuki_error_message = (
+            "Tsuzuki returned no "
+            "schedule entries."
+        )
+
+    except TsuzukiAPIError as error:
+
+        tsuzuki_error_message = str(
+            error
+        )
+
+    try:
+
+        schedules = (
+            get_animeschedule_airing_day(
+                days_from_today
+            )
+        )
+
+        if schedules:
+
+            return deduplicate_schedule_entries(
+                schedules
+            )
+
+        animeschedule_error_message = (
+            "AnimeSchedule returned no "
+            "schedule entries."
+        )
+
+    except AnimeScheduleAPIError as error:
+
+        animeschedule_error_message = str(
+            error
+        )
+
+    raise AniListAPIError(
+        f"AniList unavailable: "
+        f"{anilist_error_message} "
+        f"Tsuzuki schedule fallback "
+        f"also failed: "
+        f"{tsuzuki_error_message} "
+        f"AnimeSchedule fallback "
+        f"also failed: "
+        f"{animeschedule_error_message}"
+    )
 
 
 def get_anime_airing_yesterday():
